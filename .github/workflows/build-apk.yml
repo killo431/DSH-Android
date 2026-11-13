@@ -1,0 +1,74 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-apk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and package debug APK
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-37-ext2" "ndk;29.0.14206865"
+
+      - name: Fetch verified native libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORK: ${{ github.workspace }}/toolchains
+          JNI_DIR: ${{ github.workspace }}/toolchains/out/jniLibs
+        run: native/prebuilt.sh fetch
+
+      - name: Build engine bundle
+        env:
+          OUT_DIR: ${{ github.workspace }}/toolchains/out/engine
+          WORK_DIR: ${{ github.workspace }}/toolchains/out/engine-build
+          TMPDIR_OVERRIDE: ${{ github.workspace }}/toolchains/tmp
+        run: js/build-engine.sh
+
+      - name: Assemble debug APK
+        run: >-
+          ./gradlew --no-daemon :app:assembleDebug
+          -Pdsh.nativeOut="$GITHUB_WORKSPACE/toolchains/out/jniLibs"
+          -Pdsh.engineOut="$GITHUB_WORKSPACE/toolchains/out/engine"
+          -Pdsh.thirdPartyOut="$GITHUB_WORKSPACE/toolchains/out/third-party"
+
+      - name: Generate APK checksum
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/app-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-android-debug-apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
