@@ -40,7 +40,7 @@ jobs:
           test -n "$sdkmanager_path"
           echo "$(dirname "$sdkmanager_path")" >> "$GITHUB_PATH"
           yes | "$sdkmanager_path" --licenses >/dev/null
-          "$sdkmanager_path" "platforms;android-37-ext2" "ndk;29.0.14206865"
+          "$sdkmanager_path" "platforms;android-37.2" "ndk;29.0.14206865"
 
       - name: Fetch verified native libraries
         env:
